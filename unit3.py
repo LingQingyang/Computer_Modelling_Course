@@ -2,6 +2,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 
+# Constants
+H0 = 72.0
+Omega_m = 0.3
+Omega_lambda = 0.7
+c = 299792.458  # km/s
+
 class Cosmology:
     # Unit 1
     def __init__(self, H0, Omega_m, Omega_lambda):
@@ -128,12 +134,12 @@ class Cosmology:
         integral = (dz / 3.0) * (
             f[0]
             + 4.0 * np.sum(f[1:-1:2])
-            + 2.0 * np.sum(f[2:-1:2])
+            + 2.0 * np.sum(f[2:-2:2])
             + f[-1]
         )
         return (c / self.H0) * integral
     
-    # 4.1 4 Test Numerical Integration Methods
+    # 4.1.4 Test Numerical Integration Methods
     def test_numerical_integration_methods(self, z_max, n, c):
         D_rect = self.distance_integral_rectangle(z_max, n, c)
         D_trap = self.distance_integral_trapezoid(z_max, n, c)
@@ -171,6 +177,7 @@ class Cosmology:
         plt.ylabel('Absolute fractional error')
         plt.title('Convergence of Numerical Integration Methods')
         plt.legend()
+        plt.savefig("convergence_plot.png", dpi=300)
         plt.show()
 
         print("Final Rectangle result (n=10000):", self.distance_integral_rectangle(z_max, 10000, c))
@@ -196,7 +203,7 @@ class Cosmology:
         D_integral *= (c / self.H0)
         return z_values, D_integral
 
-    # 4.3.2. Test cumulative trapezoid rule
+    # 4.3.2 Test cumulative trapezoid rule
     def test_cumulative_trapezoid(self, z_max, n, c):
         """Compute and plot D(z) using the cumulative trapezoid rule."""
         z_values, D_values = self.distance_cumulative_trapezoid(z_max, n, c)
@@ -207,6 +214,7 @@ class Cosmology:
         plt.ylabel('Comoving Distance D(z) [Mpc]')
         plt.title('Comoving Distance vs Redshift')
         plt.legend()
+        plt.savefig("cumulative_trapezoid_Dz.png", dpi=300)
         plt.show()
 
         print(f"D(z={z_max}) = {D_values[-1]:.2f} Mpc")
@@ -221,7 +229,7 @@ class Cosmology:
         z_max = np.max(z_array)
         z_grid, D_grid = self.distance_cumulative_trapezoid(z_max, n, c)
   
-        interp_func = interp1d(z_grid, D_grid, kind='cubic')
+        interp_func = interp1d(z_grid, D_grid, kind='cubic', bounds_error=False, fill_value="extrapolate")
  
         return interp_func(z_array)
     
@@ -246,12 +254,14 @@ class Cosmology:
                 Sx = np.sin(x)
             D_L = (1 + z_array) * (c / self.H0) / sqrt_ok * Sx
 
+        eps = 1e-12
+        D_L = np.maximum(D_L, eps)
         mu = 5 * np.log10(D_L) + 25
         return mu
 
-    ## 4.4 Test interpolation and distance modulus
+    # 4.3.4 Test interpolation and distance modulus
     def test_interpolation_and_distance_modulus(self, n, c):
-        z_test = [0.0, 0.1, 0.3, 0.5, 0.7, 1.0]
+        z_test = [0.001, 0.1, 0.3, 0.5, 0.7, 1.0]
         D_interp = self.interpolated_distance(z_test, n=1000, c=c)
         mu_interp = self.distance_modulus(z_test, n=1000, c=c)
 
@@ -264,7 +274,7 @@ class Cosmology:
             print(f"z={z:.2f}, μ(z)={mu:.2f}")
 
         # Plot μ(z)
-        z_fine = np.linspace(0, 1.0, 200)
+        z_fine = np.linspace(0.001, 1.0, 200)
         mu_fine = self.distance_modulus(z_fine, n=1000, c=c)
         plt.figure(figsize=(8,6))
         plt.plot(z_fine, mu_fine, label="Distance Modulus μ(z)")
@@ -272,32 +282,68 @@ class Cosmology:
         plt.ylabel("Distance Modulus μ(z)")
         plt.title("Interpolated Distance Modulus vs Redshift")
         plt.legend()
+        plt.savefig("distance_modulus_vs_redshift.png", dpi=300)
+        plt.show()
+    
+    # 4.4 Exploring the effects of changing the three main parametres
+    def changing_parametres(self, n, c):
+        """
+        Explore how varying H0, Omega_m, and Omega_lambda affects the distance modulus μ(z).
+        Output as three subplots arranged horizontally in one combined figure.
+        """
+        z = np.linspace(0.001, 1.0, 1000)
+        fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+
+        # Changing Omega_m
+        for Om in [0.2, 0.3, 0.4]:
+            model = Cosmology(self.H0, Om, 1 - Om)  # assume flat universe
+            mu = model.distance_modulus(z, n, c)
+            axes[0].plot(z, mu, label=f"Omega_m={Om:.2f}")
+        axes[0].set_xlabel("Redshift z")
+        axes[0].set_title("Different Omega_m")
+        axes[0].legend()
+
+        # Changing Omega_lambda
+        for Ol in [0.6, 0.7, 0.8]:
+            model = Cosmology(self.H0, 1 - Ol, Ol)
+            mu = model.distance_modulus(z, n, c)
+            axes[1].plot(z, mu, label=f"Omega_lambda={Ol:.2f}")
+        axes[1].set_xlabel("Redshift z")
+        axes[1].set_title("Different Omega_lambda")
+        axes[1].legend()
+
+        # Changing H0
+        for H in [65.0, 72.0, 80.0]:
+            model = Cosmology(H, self.Omega_m, self.Omega_lambda)
+            mu = model.distance_modulus(z, n, c)
+            axes[2].plot(z, mu, label=f"H0={H:.0f} km/s/Mpc")
+        axes[2].set_xlabel("Redshift z")
+        axes[2].set_title("Different H0")
+        axes[2].legend()
+
+        fig.text(0.03, 0.5, 'Distance Modulus μ(z)', rotation='vertical', va='center', ha='left')
+        fig.suptitle("Exploration of Parameter Effects on Distance Modulus μ(z)", fontsize=16)
+        plt.tight_layout(rect=[0, 0, 1, 0.94])
+        
+        fig.savefig("parameter_effects_3in1.png", dpi=300)
         plt.show()
 
 def main():
-    H0 = 72.0
-    Omega_m = 0.3
-    Omega_lambda = 0.7
-    base_model = Cosmology(H0, Omega_m, Omega_lambda)
-
-    n = 1000 # Number of points/intervals
+    n = 1000  # Number of points/intervals
     z_max = 1.0
-    c = 299792.458  # km/s
     
+    base_model = Cosmology(H0, Omega_m, Omega_lambda)
     print(base_model)
+    
     base_model.plot_distance_integrand(z_max, n)
     base_model.plot_distance_integrand_with_varying_Omega_m(z_max, n)
     
     base_model.test_numerical_integration_methods(z_max, n, c)
-
     base_model.convergence_test(c)
     base_model.test_cumulative_trapezoid(z_max, n, c)
     base_model.test_interpolation_and_distance_modulus(n, c)
+    base_model.changing_parametres(n, c)
 
-# This is a special python idiom that
-# allows the code to be run from the command line,
-# but if you import this module in another script
-# the code below will not be executed.
 if __name__ == "__main__":
     main()
 
